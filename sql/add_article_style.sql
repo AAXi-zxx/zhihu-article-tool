@@ -1,5 +1,5 @@
 # 添加文章风格字段
-# @author <a href="https://">zxx</a>
+# @author zxx
 
 use ai_passage_creator;
 

@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
 
 # 创建 FastAPI 应用
 app = FastAPI(
-    title="AI 爆款文章创作器",
+    title="AI 知乎文章创作工具",
     description="基于多智能体编排的 AI 文章创作平台",
     version="0.0.1",
     lifespan=lifespan
@@ -91,7 +91,7 @@ app.include_router(statistics_router, prefix="/api")
 async def root():
     """根路径"""
     return {
-        "message": "AI 爆款文章创作器 - Python 后端",
+        "message": "AI 知乎文章创作工具 - Python 后端",
         "version": "0.0.1",
         "docs": "/docs"
     }
