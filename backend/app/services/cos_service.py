@@ -97,8 +97,10 @@ class CosService:
                 # 下载图片
                 response = await self.http_client.get(image_data.url)
                 if response.status_code != 200:
+                    # 下载失败返回 None 走降级方案，避免把用户浏览器打不开的
+                    # 原始外链（如 Pexels）直接塞进文章造成裂图
                     logger.error(f"下载图片失败: {image_data.url}")
-                    return image_data.url  # 降级：直接返回原始 URL
+                    return None
                 image_bytes = response.content
             else:
                 logger.error(f"未知的数据类型: {image_data.data_type}")
@@ -127,9 +129,7 @@ class CosService:
             return cos_url
         except Exception as e:
             logger.error(f"上传图片数据到 COS 失败: {e}")
-            # 如果是 URL 类型，降级返回原始 URL
-            if image_data.data_type == DataType.URL:
-                return image_data.url
+            # 下载/上传失败统一返回 None 走上层降级，不返回原始外链（避免裂图）
             return None
     
     def use_direct_url(self, image_url: str) -> str:

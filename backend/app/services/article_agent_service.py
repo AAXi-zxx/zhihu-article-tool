@@ -1,11 +1,12 @@
 """文章智能体编排服务"""
 
+import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime
 from typing import Callable, List, Optional
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, APIConnectionError, APITimeoutError
 
 from app.agent.orchestrator import ArticleAgentOrchestrator
 from app.agent.parallel.image_generator import ParallelImageGenerator
@@ -314,12 +315,22 @@ class ArticleAgentService:
     # region 辅助方法
     
     async def _call_llm(self, prompt: str) -> str:
-        """调用 LLM（非流式）"""
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.choices[0].message.content
+        """调用 LLM（非流式），网关瞬断/网络抖动时自动重试"""
+        last_error: Optional[Exception] = None
+        for attempt in range(3):
+            try:
+                response = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                return response.choices[0].message.content
+            except (APIConnectionError, APITimeoutError) as e:
+                # LLM 网关偶发 Connection error：退避重试（2s / 4s）
+                last_error = e
+                logger.warning(f"LLM 连接失败（第 {attempt + 1}/3 次）: {e}")
+                if attempt < 2:
+                    await asyncio.sleep(2 ** (attempt + 1))
+        raise last_error
     
     async def _call_llm_with_streaming(
         self,

@@ -1,5 +1,6 @@
 """图片服务策略选择器"""
 
+import base64
 import logging
 from typing import Dict, List, Optional
 
@@ -121,14 +122,36 @@ class ImageServiceStrategy:
         """处理降级逻辑"""
         pos = position if position else 1
         fallback_url = self._get_fallback_image(pos)
-        
+
         # 将降级图片也上传到 COS
         fallback_data = ImageData.from_url(fallback_url)
         cos_url = await self.cos_service.upload_image_data(fallback_data, "fallback")
-        
-        # 如果上传失败，直接使用原始 URL
-        final_url = cos_url if cos_url else fallback_url
-        return ImageResult(final_url, ImageMethodEnum.get_fallback_method())
+
+        if cos_url:
+            return ImageResult(cos_url, ImageMethodEnum.get_fallback_method())
+
+        # picsum 下载/上传也失败（如外网整体不可达）时，使用本地生成的 SVG 占位图。
+        # data URL 不依赖任何网络，保证文章里永远是可显示的图片而不是裂图
+        logger.warning(f"降级图片上传 COS 失败, 使用本地 SVG 占位图, position={pos}")
+        return ImageResult(self._local_placeholder_svg(pos), ImageMethodEnum.PICSUM)
+
+    @staticmethod
+    def _local_placeholder_svg(position: int) -> str:
+        """本地生成 SVG 占位图（data URL），不依赖任何外部网络"""
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450">'
+            '<rect width="100%" height="100%" fill="#eef2f6" rx="12"/>'
+            '<text x="50%" y="45%" font-family="Arial, sans-serif" font-size="34" '
+            'fill="#8a97a5" text-anchor="middle" dominant-baseline="middle">'
+            f'配图生成失败（第 {position} 张）'
+            '</text>'
+            '<text x="50%" y="58%" font-family="Arial, sans-serif" font-size="20" '
+            'fill="#b0bcc8" text-anchor="middle" dominant-baseline="middle">'
+            '图片源暂不可达，可检查网络后重新生成'
+            '</text>'
+            '</svg>'
+        )
+        return "data:image/svg+xml;base64," + base64.b64encode(svg.encode("utf-8")).decode()
     
     def _get_folder_for_method(self, method: ImageMethodEnum) -> str:
         """根据图片方法获取 COS 文件夹"""
