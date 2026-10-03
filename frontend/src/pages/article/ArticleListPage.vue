@@ -94,6 +94,16 @@
 
             <template v-else-if="column.key === 'action'">
               <div class="action-group">
+                <a-button
+                  v-if="isResumable(record)"
+                  type="link"
+                  size="small"
+                  @click="resumeArticle(record)"
+                  class="action-btn resume-btn"
+                >
+                  <EditOutlined />
+                  继续创作
+                </a-button>
                 <a-button type="link" size="small" @click="viewArticle(record)" class="action-btn view-btn">
                   <EyeOutlined />
                   查看
@@ -109,7 +119,7 @@
                   重试
                 </a-button>
                 <a-button
-                  v-else
+                  v-else-if="!isResumable(record)"
                   type="link"
                   size="small"
                   @click="exportArticle(record)"
@@ -162,7 +172,8 @@ import {
   DownloadOutlined,
   DeleteOutlined,
   FileTextOutlined,
-  RedoOutlined
+  RedoOutlined,
+  EditOutlined
 } from '@ant-design/icons-vue'
 import { listArticle, deleteArticle as deleteArticleApi, getArticle } from '@/api/articleController'
 import dayjs, { type Dayjs } from 'dayjs'
@@ -293,6 +304,19 @@ const handleTableChange = (pag: any) => {
 // 查看文章
 const viewArticle = (record: API.ArticleVO) => {
   router.push(`/article/${record.taskId}`)
+}
+
+// 是否可恢复创作（等待用户操作的阶段：选标题 / 编辑大纲）
+const isResumable = (record: API.ArticleVO) => {
+  return (
+    record.status === 'PROCESSING' &&
+    (record.phase === 'TITLE_SELECTING' || record.phase === 'OUTLINE_EDITING')
+  )
+}
+
+// 继续创作：回到创作页对应阶段
+const resumeArticle = (record: API.ArticleVO) => {
+  router.push(`/create?taskId=${record.taskId}`)
 }
 
 // 导出文章

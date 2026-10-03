@@ -11,6 +11,17 @@
           </a-button>
           <div class="right-actions">
             <a-button
+              v-if="isResumable"
+              type="primary"
+              @click="goResume"
+              class="resume-btn"
+            >
+              <template #icon>
+                <EditOutlined />
+              </template>
+              继续创作
+            </a-button>
+            <a-button
               v-if="article?.status === 'FAILED'"
               type="primary"
               danger
@@ -174,7 +185,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import {
@@ -188,7 +199,8 @@ import {
   CloseCircleOutlined,
   LoadingOutlined,
   RedoOutlined,
-  ThunderboltOutlined
+  ThunderboltOutlined,
+  EditOutlined
 } from '@ant-design/icons-vue'
 import { getArticle, getExecutionLogs } from '@/api/articleController'
 import { marked } from 'marked'
@@ -206,6 +218,21 @@ const showExecutionLogs = ref(false)
 // Markdown 转 HTML
 const markdownToHtml = (markdown: string) => {
   return marked(markdown)
+}
+
+// 是否可恢复创作（等待用户操作的阶段：选标题 / 编辑大纲）
+const isResumable = computed(() => {
+  return (
+    article.value?.status === 'PROCESSING' &&
+    (article.value?.phase === 'TITLE_SELECTING' || article.value?.phase === 'OUTLINE_EDITING')
+  )
+})
+
+// 继续创作：回到创作页对应阶段
+const goResume = () => {
+  if (article.value?.taskId) {
+    router.push(`/create?taskId=${article.value.taskId}`)
+  }
 }
 
 // 加载文章

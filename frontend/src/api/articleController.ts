@@ -16,7 +16,7 @@ export async function getArticle(
   })
 }
 
-/** AI 修改大纲 POST /article/ai-modify-outline */
+/** AI 修改大纲 POST /article/ai-modify-outline（LLM 生成较慢，单独放宽超时到 3 分钟） */
 export async function aiModifyOutline(
   body: API.ArticleAiModifyOutlineRequest,
   options?: { [key: string]: any }
@@ -27,6 +27,7 @@ export async function aiModifyOutline(
       'Content-Type': 'application/json',
     },
     data: body,
+    timeout: 180000,
     ...(options || {}),
   })
 }

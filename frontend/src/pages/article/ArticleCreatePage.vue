@@ -506,7 +506,7 @@ import {
   PictureOutlined,
   FileTextOutlined
 } from '@ant-design/icons-vue'
-import { createArticle, confirmTitle, confirmOutline } from '@/api/articleController'
+import { createArticle, confirmTitle, confirmOutline, getArticle } from '@/api/articleController'
 import { connectSSE, closeSSE, type SSEMessage } from '@/utils/sse'
 import { marked } from 'marked'
 import TitleSelectingStage from './components/TitleSelectingStage.vue'
@@ -914,15 +914,152 @@ const resetCreate = () => {
 }
 
 // 组件挂载时检查路由参数
-onMounted(() => {
+onMounted(async () => {
   if (route.query.topic) {
     topic.value = route.query.topic as string
   }
+  // 支持从历史列表恢复未完成的创作（断点续创）
+  const resumeTaskId = route.query.taskId as string
+  if (resumeTaskId) {
+    await resumeTask(resumeTaskId)
+  }
 })
 
-// 组件卸载前关闭 SSE
+// ===== 断点续创：恢复未完成任务 =====
+
+// 生成中阶段的轮询定时器（捕捉 SSE 重连前错过的阶段事件）
+let resumePollTimer: number | null = null
+
+const stopResumePoll = () => {
+  if (resumePollTimer !== null) {
+    clearInterval(resumePollTimer)
+    resumePollTimer = null
+  }
+}
+
+// 根据任务详情恢复对应阶段的界面
+const applyResumeState = (data: API.ArticleVO) => {
+  const phase = data.phase || ''
+
+  switch (phase) {
+    case 'TITLE_SELECTING': {
+      stopResumePoll()
+      titleOptions.value =
+        (data.titleOptions as Array<{ mainTitle: string; subTitle: string }>) || []
+      currentStep.value = 1
+      isCreating.value = false
+      isOutlineStreaming.value = false
+      isStreaming.value = false
+      currentPhase.value = 'TITLE_SELECTING'
+      addLog('已恢复任务：请选择标题方案', 'info')
+      break
+    }
+
+    case 'OUTLINE_EDITING': {
+      stopResumePoll()
+      article.value.mainTitle = data.mainTitle || ''
+      article.value.subTitle = data.subTitle || ''
+      outline.value =
+        (data.outline as Array<{ section: number; title: string; points: string[] }>) || []
+      currentStep.value = 1
+      isCreating.value = false
+      isOutlineStreaming.value = false
+      isStreaming.value = false
+      currentPhase.value = 'OUTLINE_EDITING'
+      addLog('已恢复任务：请编辑或确认大纲', 'info')
+      break
+    }
+
+    case 'TITLE_GENERATING':
+    case 'OUTLINE_GENERATING':
+    case 'CONTENT_GENERATING': {
+      // 生成中阶段：错过的流式内容无法找回，但下一个阶段完成事件会携带完整数据，
+      // 界面会自动切换；同时轮询兜底，防止 SSE 重连前事件已经发完导致卡在加载页
+      currentStep.value = phase === 'CONTENT_GENERATING' ? 2 : 1
+      isCreating.value = phase === 'TITLE_GENERATING'
+      isOutlineStreaming.value = phase === 'OUTLINE_GENERATING'
+      isStreaming.value = phase === 'CONTENT_GENERATING'
+      if (phase !== 'TITLE_GENERATING') {
+        article.value.mainTitle = data.mainTitle || ''
+        article.value.subTitle = data.subTitle || ''
+      }
+      currentPhase.value = phase
+      addLog('任务生成中，已重新连接实时进度...', 'info')
+      break
+    }
+
+    case 'COMPLETED': {
+      stopResumePoll()
+      router.replace(`/article/${data.taskId}`)
+      return
+    }
+
+    case 'FAILED':
+    default: {
+      stopResumePoll()
+      message.warning('该任务此前创作失败，请重新创建')
+      currentPhase.value = 'INPUT'
+      return
+    }
+  }
+
+  // 生成中阶段启动轮询：每 5 秒检查一次任务阶段，阶段变化后重新应用界面状态
+  const generatingPhases = ['TITLE_GENERATING', 'OUTLINE_GENERATING', 'CONTENT_GENERATING']
+  if (generatingPhases.includes(phase) && resumePollTimer === null) {
+    resumePollTimer = window.setInterval(async () => {
+      try {
+        const res = await getArticle({ taskId: data.taskId || '' })
+        const latest = res.data.data
+        if (latest && latest.phase && latest.phase !== phase) {
+          applyResumeState(latest)
+        }
+      } catch {
+        // 轮询失败静默忽略，SSE 仍可能推送事件
+      }
+    }, 5000)
+  }
+}
+
+// 从历史列表恢复未完成任务
+const resumeTask = async (id: string) => {
+  try {
+    const res = await getArticle({ taskId: id })
+    if (res.data.code !== 0 || !res.data.data) {
+      message.error('未找到该任务，请重新创建')
+      return
+    }
+    const data = res.data.data
+    taskId.value = data.taskId || id
+    topic.value = data.topic || ''
+
+    if (data.status === 'COMPLETED') {
+      // 已完成直接跳详情页
+      router.replace(`/article/${id}`)
+      return
+    }
+    if (data.status === 'FAILED') {
+      message.warning('该任务此前创作失败，请重新创建')
+      return
+    }
+
+    // 重连 SSE，监听后续阶段事件（确认标题/大纲后的事件都走这条连接）
+    eventSource = connectSSE(taskId.value, {
+      onMessage: handleSSEMessage,
+      onError: handleSSEError,
+      onComplete: handleSSEComplete,
+    })
+
+    applyResumeState(data)
+  } catch (error) {
+    const err = error as Error
+    message.error(err.message || '恢复任务失败')
+  }
+}
+
+// 组件卸载前关闭 SSE 和轮询
 onBeforeUnmount(() => {
   closeSSE(eventSource)
+  stopResumePoll()
 })
 </script>
 

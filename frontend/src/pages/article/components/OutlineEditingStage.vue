@@ -248,8 +248,13 @@ const handleAiModify = async () => {
       message.success('AI 已根据您的建议修改大纲')
     }
   } catch (error) {
-    const err = error as Error
-    message.error(err.message || 'AI 修改失败')
+    const err = error as { code?: string; message?: string }
+    // axios 超时错误码为 ECONNABORTED，给出友好提示
+    if (err.code === 'ECONNABORTED') {
+      message.error('AI 修改耗时较长，连接超时了，请再试一次')
+    } else {
+      message.error(err.message || 'AI 修改失败')
+    }
   } finally {
     aiModifying.value = false
   }
