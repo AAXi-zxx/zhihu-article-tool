@@ -23,6 +23,7 @@ class EmojiPackService(ImageSearchService):
         self.timeout = settings.emoji_pack_timeout / 1000  # 转为秒
         self.client = httpx.AsyncClient(
             timeout=self.timeout,
+            trust_env=False,  # 必应国内直连可达，绕过系统代理避免抖动影响
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
             }

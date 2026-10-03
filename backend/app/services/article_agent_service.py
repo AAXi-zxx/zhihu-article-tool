@@ -6,6 +6,8 @@ import logging
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime
 from typing import Callable, List, Optional
+
+import httpx
 from openai import AsyncOpenAI, APIConnectionError, APITimeoutError
 
 from app.agent.orchestrator import ArticleAgentOrchestrator
@@ -34,9 +36,15 @@ class ArticleAgentService:
     
     def __init__(self):
         # 初始化 OpenAI 客户端（中科大 LLM 网关，OpenAI 兼容）
+        # trust_env=False：网关为国内直连可达，绕过系统代理环境变量，
+        # 避免本机代理抖动导致 LLM 调用 Connection error
         self.client = AsyncOpenAI(
             api_key=settings.dashscope_api_key,
-            base_url=settings.dashscope_base_url
+            base_url=settings.dashscope_base_url,
+            http_client=httpx.AsyncClient(
+                trust_env=False,
+                timeout=httpx.Timeout(600.0, connect=15.0),
+            ),
         )
         self.model = settings.dashscope_model
         

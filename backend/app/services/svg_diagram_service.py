@@ -19,9 +19,15 @@ class SvgDiagramService(ImageSearchService):
     
     def __init__(self):
         # 使用中科大 LLM 网关（OpenAI 兼容）
+        # trust_env=False：网关国内直连可达，绕过系统代理避免抖动影响
+        import httpx
         self.client = AsyncOpenAI(
             api_key=settings.dashscope_api_key,
-            base_url=settings.dashscope_base_url
+            base_url=settings.dashscope_base_url,
+            http_client=httpx.AsyncClient(
+                trust_env=False,
+                timeout=httpx.Timeout(600.0, connect=15.0),
+            ),
         )
         self.model = settings.dashscope_model
         self.default_width = settings.svg_diagram_default_width

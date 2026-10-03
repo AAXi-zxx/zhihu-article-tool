@@ -23,9 +23,15 @@ class NanoBananaService(ImageSearchService):
         self.model = settings.nano_banana_model
         self.size = settings.nano_banana_image_size
         # 初始化 OpenAI 兼容客户端（生图）
+        # trust_env=False：智谱 API 国内直连可达，绕过系统代理避免抖动影响
+        import httpx
         self.client = AsyncOpenAI(
             api_key=settings.nano_banana_api_key,
             base_url=settings.nano_banana_base_url,
+            http_client=httpx.AsyncClient(
+                trust_env=False,
+                timeout=httpx.Timeout(300.0, connect=15.0),
+            ),
         )
 
     async def search_image(self, keywords: str) -> Optional[str]:
